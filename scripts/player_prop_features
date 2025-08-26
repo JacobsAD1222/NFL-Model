@@ -1,0 +1,135 @@
+import pandas as pd
+import numpy as np
+from io import BytesIO
+from google.cloud import storage
+
+# --- Step 0: Firebase Setup ---
+FIREBASE_KEY_PATH = "firebase_key.json"  # supplied as GitHub secret at runtime
+BUCKET_NAME = "sports-betting-model-fea2f.firebasestorage.app"
+FOLDER_PATH_RAW = "nfl/raw_data"
+FOLDER_PATH_FEATURES = "nfl/features"
+
+client = storage.Client.from_service_account_json(FIREBASE_KEY_PATH)
+bucket = client.bucket(BUCKET_NAME)
+
+def download_feature(filename, folder=FOLDER_PATH_FEATURES):
+    blob = bucket.blob(f"{folder}/{filename}")
+    if blob.exists():
+        data = blob.download_as_bytes()
+        return pd.read_parquet(BytesIO(data))
+    else:
+        print(f"File not found in Firebase Storage: {folder}/{filename}")
+        return None
+
+def upload_feature(df, filename, folder=FOLDER_PATH_FEATURES):
+    blob = bucket.blob(f"{folder}/{filename}")
+    out_buffer = BytesIO()
+    df.to_parquet(out_buffer, index=False)
+    blob.upload_from_string(out_buffer.getvalue(), content_type='application/octet-stream')
+    print(f"Uploaded {filename} to Firebase Storage at {folder}")
+
+# --- Step 1: Load Required DataFrames from Firebase ---
+print("\n--- Loading DataFrames for Player Prop Feature Engineering ---")
+df_weekly_stats_all = download_feature("nfl_weekly_stats_all_years.parquet")
+df_final_game_data = download_feature("nfl_final_game_data.parquet")
+
+if df_weekly_stats_all is None or df_final_game_data is None:
+    raise ValueError("Missing essential DataFrames in Firebase Storage. Exiting.")
+
+# --- Step 2: Initial Data Preparation (unchanged logic) ---
+df_weekly_stats_all = df_weekly_stats_all.sort_values(by=['player_id', 'season', 'week']).reset_index(drop=True)
+df_weekly_stats_all.rename(columns={'recent_team': 'team'}, inplace=True)
+
+# Merge game_id and gameday
+game_info_cols = ['game_id', 'season', 'week', 'gameday', 'home_team', 'away_team']
+df_game_info = df_final_game_data[game_info_cols].copy()
+df_game_info_home = df_game_info.rename(columns={'home_team': 'team'})[['game_id', 'season', 'week', 'gameday', 'team']]
+df_game_info_away = df_game_info.rename(columns={'away_team': 'team'})[['game_id', 'season', 'week', 'gameday', 'team']]
+df_game_id_map = pd.concat([df_game_info_home, df_game_info_away], ignore_index=True).drop_duplicates(subset=['game_id', 'team'])
+initial_weekly_shape = df_weekly_stats_all.shape[0]
+df_weekly_stats_all = pd.merge(df_weekly_stats_all, df_game_id_map, on=['season', 'week', 'team'], how='left')
+df_weekly_stats_all.dropna(subset=['game_id', 'gameday'], inplace=True)
+print(f"Dropped {initial_weekly_shape - df_weekly_stats_all.shape[0]} rows due to missing game context after merge.")
+
+# --- Step 3: Calculate FanDuel Fantasy Points ---
+stats_for_fanduel = ['passing_yards','passing_tds','interceptions','rushing_yards','rushing_tds','receiving_yards','receiving_tds','receptions','fumbles_lost']
+for col in stats_for_fanduel:
+    if col not in df_weekly_stats_all.columns:
+        df_weekly_stats_all[col] = 0
+    else:
+        df_weekly_stats_all[col] = df_weekly_stats_all[col].fillna(0)
+
+df_weekly_stats_all['fantasy_points_fanduel'] = (
+    df_weekly_stats_all['passing_yards'] * 0.04 +
+    df_weekly_stats_all['passing_tds'] * 4 +
+    df_weekly_stats_all['interceptions'] * -1 +
+    df_weekly_stats_all['rushing_yards'] * 0.1 +
+    df_weekly_stats_all['rushing_tds'] * 6 +
+    df_weekly_stats_all['receiving_yards'] * 0.1 +
+    df_weekly_stats_all['receiving_tds'] * 6 +
+    df_weekly_stats_all['receptions'] * 0.5 +
+    df_weekly_stats_all['fumbles_lost'] * -1
+)
+
+# --- Step 4: Player-Specific Rolling Features ---
+player_rolling_metrics = ['passing_yards','passing_tds','completions','interceptions','carries','rushing_yards','rushing_tds','receptions','targets','receiving_yards','receiving_tds','sacks','fantasy_points_fanduel']
+player_windows = [3,5,8]
+
+for metric in player_rolling_metrics:
+    if metric in df_weekly_stats_all.columns:
+        for window in player_windows:
+            df_weekly_stats_all[f'rolling_{metric}_{window}_weeks'] = df_weekly_stats_all.groupby('player_id')[metric].transform(
+                lambda x: x.shift(1).rolling(window=window, min_periods=1).mean()
+            ).fillna(0)
+
+# --- Step 5: Merge with Game Context (unchanged logic) ---
+game_level_base_cols = ['game_id','season','week','gameday','home_team','away_team','home_team_score','away_team_score','total_line','home_team_spread_line','away_team_spread_line','home_team_rest','away_team_rest']
+weather_features_to_add = [wf for wf in ['temperature','wind','precipitation'] if wf in df_final_game_data.columns]
+rolling_game_cols = [col for col in df_final_game_data.columns if 'rolling_' in col and 'team_score' not in col]
+game_level_features_to_merge = list(set(game_level_base_cols + weather_features_to_add + rolling_game_cols))
+df_game_context_for_merge = df_final_game_data[game_level_features_to_merge].copy()
+
+df_player_props = pd.merge(df_weekly_stats_all, df_game_context_for_merge, on=['game_id','season','week','gameday'], how='left')
+is_home_player_team = (df_player_props['team'] == df_player_props['home_team'])
+df_player_props['team_actual'] = df_player_props['team']
+df_player_props['opponent_team'] = np.where(is_home_player_team, df_player_props['away_team'], df_player_props['home_team'])
+df_player_props['is_home'] = is_home_player_team.astype(int)
+df_player_props['team_score'] = np.where(is_home_player_team, df_player_props['home_team_score'], df_player_props['away_team_score'])
+df_player_props['opponent_score'] = np.where(is_home_player_team, df_player_props['away_team_score'], df_player_props['home_team_score'])
+df_player_props['team_rest_game'] = np.where(is_home_player_team, df_player_props['home_team_rest'], df_player_props['away_team_rest'])
+df_player_props['opponent_rest'] = np.where(is_home_player_team, df_player_props['away_team_rest'], df_player_props['home_team_rest'])
+df_player_props['team_spread_line'] = np.where(is_home_player_team, df_player_props['home_team_spread_line'], df_player_props['away_team_spread_line'])
+df_player_props['opponent_spread_line'] = np.where(is_home_player_team, df_player_props['away_team_spread_line'], df_player_props['home_team_spread_line'])
+
+# Dynamic rolling assignment for team/opponent
+base_rolling_game_stat_names = set()
+for col in rolling_game_cols:
+    if col.startswith('home_'):
+        base_rolling_game_stat_names.add(col[5:])
+    elif col.startswith('away_'):
+        base_rolling_game_stat_names.add(col[5:])
+for col_base in base_rolling_game_stat_names:
+    home_col = f'home_{col_base}'
+    away_col = f'away_{col_base}'
+    if home_col in df_player_props.columns and away_col in df_player_props.columns:
+        df_player_props[f'team_{col_base}'] = np.where(is_home_player_team, df_player_props[home_col], df_player_props[away_col])
+        df_player_props[f'opponent_{col_base}'] = np.where(is_home_player_team, df_player_props[away_col], df_player_props[home_col])
+    else:
+        if f'team_{col_base}' not in df_player_props.columns:
+            df_player_props[f'team_{col_base}'] = np.nan
+        if f'opponent_{col_base}' not in df_player_props.columns:
+            df_player_props[f'opponent_{col_base}'] = np.nan
+
+cols_to_drop_after_rename = [col for col in df_player_props.columns if col.startswith(('home_','away_')) and col not in ['home_team','away_team']]
+df_player_props.drop(columns=cols_to_drop_after_rename, errors='ignore', inplace=True)
+df_player_props['gameday'] = pd.to_datetime(df_player_props['gameday'])
+df_player_props = df_player_props.sort_values(by=['player_id','gameday']).reset_index(drop=True)
+
+# --- Step 6: Drop rows with missing game context ---
+df_player_props.dropna(subset=['game_id','team','opponent_team','gameday','is_home'], inplace=True)
+
+# --- Step 7: Upload final feature DataFrame to Firebase ---
+upload_feature(df_player_props, "nfl_player_props_features.parquet")
+
+print("\n--- Player Prop Feature Engineering complete. ---")
+print("The 'nfl_player_props_features.parquet' file now contains all calculated features in Firebase Storage.")
