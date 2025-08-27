@@ -85,7 +85,7 @@ def fetch_and_update_nfl_data(data_type, year):
 
 # --- Step 4: Main execution ---
 if __name__ == "__main__":
-    START_YEAR = 2024
+    START_YEAR = 2007
     END_YEAR = 2024  # Update as the season progresses
     data_types_to_fetch = ['schedules', 'weekly_stats', 'pbp']
     
