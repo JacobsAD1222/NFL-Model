@@ -4,7 +4,7 @@ numpy>=1.28
 pyarrow>=12.0
 
 # Data acquisition
-nfl_data_py>=0.4.1
+nfl_data_py
 
 # Firebase integration
 firebase-admin>=6.0.1
