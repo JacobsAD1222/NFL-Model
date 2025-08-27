@@ -3,6 +3,7 @@ import os
 import numpy as np # Import numpy for NaN handling
 from google.cloud import storage
 from io import BytesIO # Import BytesIO for handling in-memory files
+import time # This import is necessary for time.sleep()
 
 # --- Firebase Configuration ---
 FIREBASE_KEY_PATH = "firebase_key.json"
