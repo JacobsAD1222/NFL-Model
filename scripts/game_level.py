@@ -120,7 +120,7 @@ PROCESSED_DATA_PATH = "nfl/features"
 PROCESSED_FILENAME = "nfl_game_level_features.parquet"
 
 # Initialize the Firebase Admin SDK with the secret key string
-initialize_firebase_admin(FIREBASE_SERVICE_KEY_JSON_STR)
+initialize_firebase_admin()
 
 # Define the files the script needs to load from Firebase
 files_to_load = {
