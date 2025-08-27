@@ -9,28 +9,31 @@ import firebase_admin
 from firebase_admin import credentials, storage
 
 # --- Step 1: Initialize Firebase Admin SDK ---
-def initialize_firebase_admin(service_account_json_str):
+def initialize_firebase_admin():
     """
-    Initializes the Firebase Admin SDK from a service account JSON string.
-    This is ideal for use with environment variables or cloud secrets.
-
-    Args:
-        service_account_json_str (str): The JSON content of your Firebase
-                                        service account key as a string.
+    Initializes the Firebase Admin SDK using the credentials file path
+    provided by the GOOGLE_APPLICATION_CREDENTIALS environment variable.
+    This is the standard and most reliable method for CI/CD environments.
     """
     try:
         if not firebase_admin._apps:
-            # Use io.StringIO to treat the JSON string as a file-like object
-            # for the credentials.Certificate method.
-            cred = credentials.Certificate(io.StringIO(service_account_json_str))
+            # Check for the GOOGLE_APPLICATION_CREDENTIALS environment variable.
+            # This is automatically set by the GitHub Actions workflow.
+            cred_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+            
+            if not cred_path:
+                raise FileNotFoundError("GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.")
+
+            # Initialize the app using the path to the service account key file.
+            cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred, {
                 'storageBucket': 'sports-betting-model-fea2f.appspot.com'
             })
-        print("Firebase Admin SDK initialized successfully.")
+            print("Firebase Admin SDK initialized successfully.")
     except Exception as e:
         print(f"Error initializing Firebase: {e}")
-        print("Please ensure your 'FIREBASE_SERVICE_KEY' environment variable is correctly set.")
-        exit()
+        print("Please ensure your 'FIREBASE_SERVICE_KEY' environment variable is correctly set in your secrets.")
+        exit(1) # Exit with an error code
 
 # --- Step 2: Load Data from Firebase Storage ---
 def load_data_from_firebase(bucket_name, source_path, filenames_to_load):
