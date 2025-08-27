@@ -159,7 +159,7 @@ def upload_parquet_to_firebase(df, filename):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    START_YEAR = 2024
+    START_YEAR = 2007
     END_YEAR = 2024
 
     all_schedules_dfs = []
