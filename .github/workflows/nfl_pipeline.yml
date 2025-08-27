@@ -8,6 +8,8 @@ on:
 jobs:
   run_pipeline:
     runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_KEY: ${{ secrets.FIREBASE_KEY }}
     steps:
       # 1️⃣ Checkout repo
       - name: Checkout code
@@ -27,10 +29,8 @@ jobs:
 
       # 4️⃣ Set up Firebase auth
       - name: Setup Firebase service account
-        env:
-          FIREBASE_SERVICE_KEY: ${{ secrets.FIREBASE_KEY }} # Set the environment variable
         run: |
-          echo "${{ secrets.FIREBASE_SERVICE_KEY }}" | base64 --decode > firebase_key.json
+          echo "${{ secrets.FIREBASE_KEY }}" | base64 --decode > firebase_key.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=firebase_key.json" >> $GITHUB_ENV
 
       # 5️⃣ Run data ingestion
@@ -44,6 +44,6 @@ jobs:
       # 7️⃣ Run feature engineering
       - name: Run feature engineering
         run: python scripts/game_level.py
-        
-      - name: Run feature engineering
+      
+      - name: Run player features
         run: python scripts/player_features.py
