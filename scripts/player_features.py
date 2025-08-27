@@ -27,7 +27,7 @@ def initialize_firebase_admin():
             # Initialize the app using the path to the service account key file.
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred, {
-                'storageBucket': 'sports-betting-model-fea2f.appspot.com'
+                'storageBucket': 'sports-betting-model-fea2f.firebasestorage.app'
             })
             print("Firebase Admin SDK initialized successfully.")
     except Exception as e:
