@@ -1,0 +1,16 @@
+# Core data
+pandas>=2.0
+numpy>=1.28
+pyarrow>=12.0
+
+# Data acquisition
+nfl_data_py>=0.4.1
+
+# Firebase integration
+firebase-admin>=6.0.1
+
+# Optional / future-proofing
+scikit-learn>=1.3      # For any modeling later
+matplotlib>=3.8        # For charts or debugging
+seaborn>=0.12          # For charts or debugging
+
