@@ -27,6 +27,8 @@ jobs:
 
       # 4️⃣ Set up Firebase auth
       - name: Setup Firebase service account
+        env:
+          FIREBASE_SERVICE_KEY: ${{ secrets.FIREBASE_KEY }} # Set the environment variable
         run: |
           echo "${{ secrets.FIREBASE_SERVICE_KEY }}" | base64 --decode > firebase_key.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=firebase_key.json" >> $GITHUB_ENV
