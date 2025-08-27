@@ -27,7 +27,7 @@ def initialize_firebase_admin():
             # Initialize the app using the path to the service account key file.
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred, {
-                'storageBucket': 'sports-betting-model-fea2f.appspot.com'
+                'storageBucket': 'sports-betting-model-fea2f.firebasestorage.app'
             })
             print("Firebase Admin SDK initialized successfully.")
     except Exception as e:
@@ -112,7 +112,7 @@ if not FIREBASE_SERVICE_KEY_JSON_STR:
     exit()
 
 # 2. Provide your Firebase Storage bucket name.
-FIREBASE_STORAGE_BUCKET = "sports-betting-model-fea2f.appspot.com"
+FIREBASE_STORAGE_BUCKET = "sports-betting-model-fea2f.firebasestorage.app"
 
 # 3. Define the paths within your bucket for raw and processed data.
 RAW_DATA_PATH = "nfl/raw_data"
