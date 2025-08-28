@@ -451,6 +451,19 @@ if not df_weekly_stats_all.empty:
         df_player_props = df_weekly_stats_all
         df_player_props.rename(columns={'game_id_ref': 'game_id'}, inplace=True)
 
+    # NEW: Merge schedules to get the gameday column for final sorting.
+    print("\n--- Merging gameday column from schedules ---")
+    df_player_props = pd.merge(
+        df_player_props,
+        df_schedules_all[['game_id', 'gameday']],
+        on='game_id',
+        how='left'
+    )
+
+    # Final cleanup and sorting
+    df_player_props['gameday'] = pd.to_datetime(df_player_props['gameday'])
+    df_player_props = df_player_props.sort_values(by=['player_id', 'gameday']).reset_index(drop=True)
+
     # Final cleanup and sorting
     df_player_props['gameday'] = pd.to_datetime(df_player_props['gameday'])
     df_player_props = df_player_props.sort_values(by=['player_id', 'gameday']).reset_index(drop=True)
